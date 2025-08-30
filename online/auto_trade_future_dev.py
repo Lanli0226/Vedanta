@@ -7,6 +7,7 @@ import pandas as pd
 import sys
 import io
 import requests
+import inspect
 
 load_dotenv()
 
@@ -40,11 +41,6 @@ class TelegramStream(io.StringIO):
         super().write(s)
         self.original_stdout.write(s) # Also print to original stdout
         self.buffer.append(s)
-        if '\n' in s: # Send message line by line
-            message = "".join(self.buffer).strip()
-            if message:
-                send_telegram_message(message)
-            self.buffer = []
 
     def flush(self):
         super().flush()
@@ -66,14 +62,14 @@ def create_binance_futures_client():
     })
     client.set_sandbox_mode(testnet)
     client.load_markets()
-    print(f"🛠️ 連線設定完成，使用 {'🧪 測試網路' if testnet else '🚀 主網路'} 模式")
+    #print(f"🛠️ 連線設定完成，使用 {'🧪 測試網路' if testnet else '🚀 主網路'} 模式")
     return client
 
 # 設定槓桿
 def set_leverage(client, symbol, leverage):
     try:
         client.set_leverage(leverage, symbol)
-        print(f"⚙️ 槓桿已設定為 {leverage}x")
+        #print(f"⚙️ 槓桿已設定為 {leverage}x")
     except Exception as e:
         print(f"❗ 槓桿設定失敗: {e}")
 
@@ -95,7 +91,7 @@ def get_position(client, symbol):
             side = side_raw.lower()
             entry_price = float(pos['entryPrice']) if pos.get('entryPrice') else None
             timestamp = pos.get('timestamp')
-            print(f"📊 持倉偵測: {amt} 張，方向: {side}，入場價: {entry_price}")
+            #print(f"📊 持倉偵測: {amt} 張，方向: {side}，入場價: {entry_price}")
             return amt, side, entry_price, timestamp
 
         print("📭 無持倉")
@@ -120,7 +116,7 @@ def get_order_precision(client, symbol):
         market = client.load_markets()[symbol]
         step_size = float(market['precision']['amount'])
         min_amount = float(market['limits']['amount']['min'])
-        print(f"📐 交易精度: 最小數量 {min_amount}, 單位步長 {step_size}")
+        #print(f"📐 交易精度: 最小數量 {min_amount}, 單位步長 {step_size}")
         return min_amount, step_size
     except Exception as e:
         print(f"❌ 取得交易精度失敗: {e}")
@@ -130,7 +126,7 @@ def get_order_precision(client, symbol):
 def round_step_size(amount, step_size):
     import math
     rounded = math.floor(amount / step_size) * step_size
-    print(f"🔢 數量經過精度對齊: 原始 {amount} → 對齊後 {rounded}")
+    #print(f"🔢 數量經過精度對齊: 原始 {amount} → 對齊後 {rounded}")
     return rounded
 
 # 關閉所有持倉
@@ -191,8 +187,8 @@ def auto_trade_futures(symbol="ETH/USDT", interval="1h",
 
         def process_once():
             try:
-                print(f"\n🔔 【策略執行】時間: {datetime.now(timezone.utc):%Y-%m-%d %H:%M:%S} UTC")
-                print(f"🧠 使用策略: {strategy.__class__.__name__}，交易標的: {symbol}")
+                #print(f"\n🔔 【策略執行】時間: {datetime.now(timezone.utc):%Y-%m-%d %H:%M:%S} UTC")
+                print(f"🧠 使用策略: {os.path.basename(strategy.__file__)}，交易標的: {symbol}")
 
                 now = datetime.now(timezone.utc)
                 df = strategy.get_signals(symbol.replace("/", ""), interval, now)
@@ -215,7 +211,7 @@ def auto_trade_futures(symbol="ETH/USDT", interval="1h",
                 if entry_time:
                     entry_time_dt = datetime.fromtimestamp(entry_time / 1000, tz=timezone.utc)
                     aligned_entry_time = align_to_interval(entry_time_dt, interval_sec)
-                    filtered_df = df[df['timestamp'] <= aligned_entry_time]
+                    filtered_df = df[df['timestamp'] <= pd.Timestamp(aligned_entry_time)]
                     if not filtered_df.empty:
                         entry_index = df.index.get_loc(filtered_df.iloc[-1].name)
                         current_index = len(df) - 1
@@ -277,6 +273,8 @@ def auto_trade_futures(symbol="ETH/USDT", interval="1h",
 
             except Exception as e:
                 print(f"❌ 執行錯誤: {e}")
+            finally:
+                sys.stdout.flush()
 
         if run_once:
             process_once()
